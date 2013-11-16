@@ -1,18 +1,19 @@
-# Object files
-*.o
-*.ko
+#.gitignore
+*.[oa]
+*~
+#*.bat
+*.obj
+*.lst
+*.__i
+*.m51
+*.lnp
+*.plg
+*.uvgui.*
+*.uvopt
+*.bak
+*.hex
+*.i
+Output/
+#*.
 
-# Libraries
-*.lib
-*.a
-
-# Shared objects (inc. Windows DLLs)
-*.dll
-*.so
-*.so.*
-*.dylib
-
-# Executables
-*.exe
-*.out
-*.app
+.gitpilot
