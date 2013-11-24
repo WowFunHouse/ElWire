@@ -14,11 +14,13 @@
 
  Connections:	Default
 
- Jumpers:		All on		
+ Jumpers:		All on
+ 
+ X'tal:			11.0592MHz		
  **************************************************************/
 #include <STC89.H>
 
-//#define	DEBUG
+#define	DEBUG
 
 #define	LED			P1
 
@@ -39,13 +41,13 @@ void main(void)
 
 	serialInit();
 
-	i = 123;
+	i = 0;
 
 	for(;;)
 	{
-		serialTxChar(++i);
-		delay(500);
-
+		serialTxChar(i);
+		delay(5000);
+		i++;
 #ifdef DEBUG
 	    P0=i;
 #endif
@@ -55,10 +57,16 @@ void main(void)
 
 void serialInit(void)
 {
-    TMOD = 0x20;
-    SCON = 0x50;
+    //TMOD = 0x20;								/* Set Timer1 to Mode 2 */
+    //SCON = 0x50;								/* Set Serial Port to Mode 1 REN=1*/
 
-    TH1 = 0xFD;
+	TMOD = T1_M2;		   						/* Set Timer1 to Mode 2:Auto-Reload */
+
+	SM0  = 0;									/* Set Serial Port Config SCON */
+	SM1  = 1;									/* Set Serial Port to Mode 1 */
+	REN  = 1;									/* Enable Rx */
+
+    TH1 = 0xFD;									/* 9600 baud */
     TL1 = TH1;
 
     PCON = 0x00;
@@ -74,7 +82,7 @@ void serialTxChar(unsigned char c)
 {
     SBUF = c;									/* Load data to be transmitted */
 
-    while(!TI);									/* Wait for data being transmitted */
+    while(TI==0);									/* Wait for data being transmitted */
     TI = 0;										/* Data transmitted */
 
 } /* serialTxChar */
