@@ -1,5 +1,20 @@
 /**************************************************************
  Title:			Parallel to Wireless Transmitter		
+
+ Board:			Custom made MCS51 WSN-02/03 control system
+
+ Connections:	P1.0 <- Arduino Pin 2 (Dancer ID Bit0)
+ 				P1.1 <- Arduino Pin 3 (Dancer ID Bit1)
+				P1.2 <- Arduino Pin 4 (Dancer ID Bit2)
+				P1.3 <- Arduino Pin 7 (ElWire Mode 1:On 0:Off)
+
+				P1.4 <- Arduino Pin 5 (ElWire Index Bit 0)
+				P1.5 <- Arduino Pin 6 (ElWire Index Bit 1)
+
+				P1.6 <- Arduino Pin 8 (Data Ready  0:Ready)
+				P1.7 -> Arduino Pin 9 (Data Rx Ack 0:Ack   1:Standby)
+			
+				P2.0 ->
  
  File:			tx0001.c
 
@@ -8,20 +23,7 @@
  				and transmit through WSN-02/03 433MHz transmitter
 
  Created on:	2014-01-11
- Created by:	Michael
-
- Board:			Custom made MCS51 WSN-02/03 control system
-
- Connections:	P1.0 <- Arduino Pin 2 (Dancer ID Bit0)
- 				P1.1 <- Arduino Pin 3 (Dancer ID Bit1)
-				P1.2 <- Arduino Pin 4 (Dancer ID Bit2)
-				P1.3 <- Arduino Pin 5 (ElWire Index Bit 0)
-				P1.4 <- Arduino Pin 6 (ElWire Index Bit 1)
-				P1.5 <- Arduino Pin 7 (ElWire Mode 1:On 0:Off)
-				P1.6 <- Arduino Pin 8 (Data Ready  1:Ready)
-				P1.7 -> Arduino Pin 9 (Data Rx Ack 0:Ack   1:Standby)
-			
-				P2.0 -> LED (RED) - Dancer1 wireless data transmitting
+ Created by:	Michael LED (RED) - Dancer1 wireless data transmitting
  				P2.1 -> LED (YLW) - Dancer2 wireless data transmitting
 				P2.2 -> LED (GRN) - Dancer3 wireless data transmitting
 				P2.3 -> LED (YLW) - Dancer4 wireless data transmitting
@@ -32,6 +34,10 @@
 
 				INT0 <- Key#1 In  - Diagnostic (Interrupt 0)
 
+				P3.0 -> Serial Port Rx -> WSN-02/03 Tx Pin5
+				P3.1 -> Serial Port Tx -> WSN-02/03 Rx Pin4
+				P3.7 -> WSN-02/03 NRST Reset Pin6 (Reset:Low)
+
  Jumpers:		N/A
 
  X'tal:			14.07456MHz (for baud rate: 38400bps)
@@ -40,6 +46,8 @@
 
 #define	LEDOn				0
 #define	LEDOff				1
+
+#define	WSN_RST				P37
 
 #define PORT_Arduino		P1
 
@@ -58,6 +66,22 @@
 #define	LED_Diagnostic		P26
 
 #define	KEY_DefaultSeq		P27
+
+void delayms(unsigned int t);
+void uartInit38400(void);
+void serialTxChar(unsigned char c);
+void initBoard(void);
+unsigned char keyDefaultSeq(void);
+void ledDancerOn(unsigned arduinoData);
+void ledDancerOff(unsigned arduinoData);
+void ledDancerAllOff(void);
+void sysDiagLedRolling(void);
+void sysDiagLedFlashing(void);
+void elwireDiag(void);
+void sysDiagnostic(void);
+void elwireDefaultSeq(void);
+unsigned char arduinoGetData(void);
+void elwireTxPacket(unsigned char packet, unsigned char led);
 
 void delayms(unsigned int t)   // 1ms delay: torrance -0.651041666667us
 {
@@ -82,8 +106,10 @@ void uartInit38400(void)
     TL1  = TH1;
     PCON = 0x00;		// No double baud rate
 
-	EA   = 1;			// Enable All Interrupts
+	IT0	 = 1;			// INT0: Falling edge trigger
+	EX0	 = 1;			// Enable External Interrupt INT0
 	ES   = 1;		    // Enable Serial Port Interrupt
+	EA   = 1;			// Enable All Interrupts
 
     TR1  = 1;			// Start Timer1 as baud rate generator
 
@@ -93,8 +119,8 @@ void serialTxChar(unsigned char c)
 {
     SBUF = c;			// Load data into Serial Buffer and transmittion will start automatically
 
-    while(!TI);			// Wait for transmittion finished
-    TI = 0;			  	// Reset transmit flag for next transmittion
+//    while(!TI);			// Wait for transmittion finished
+//    TI = 0;			  	// Reset transmit flag for next transmittion
 
 } /* serialTxChar */
 
@@ -102,13 +128,17 @@ void initBoard(void)
 {
 	PORT_Arduino 	 = 0xff;	// Set Port ready for Input from Arduino, set DataAck=1 (Standy)
 	PORT_Ctrl_Status = 0xff;	// Turn all LED Off and ready to read Key#2	status
+
+	WSN_RST			 = 0;		// Reset WSN-02/03 Wireless module
+	delayms(10);				// Delay 50ms
+	WSN_RST			 = 1;		// Normal Operation
+	delayms(10);				// Wait for WSN-02/03 ready
 	
 } /* initBoard */
 
-
 unsigned char keyDefaultSeq(void)
 {
-	return ((KEY_DefaultSeq) & 1);
+	return ((~KEY_DefaultSeq) & 1);
 
 } /* keyDefaultSeq */
 
@@ -151,6 +181,45 @@ void ledDancerOn(unsigned arduinoData)
 	}
 } /* ledDancerOn */
 
+void ledDancerOff(unsigned arduinoData)
+{
+	arduinoData &= 0x7;		// Filter out the Dancer#
+
+	switch (arduinoData)
+	{
+		case 0:
+			LED_Dancer1 = LEDOff;
+			break;
+		
+		case 1:
+			LED_Dancer2 = LEDOff;
+			break;
+
+		case 2:
+			LED_Dancer3 = LEDOff;
+			break;
+
+		case 3:
+			LED_Dancer4 = LEDOff;
+			break;
+
+		case 4:
+			LED_Dancer5 = LEDOff;
+			break;
+
+	  	case 7:
+			LED_Dancer1 = LEDOff;
+			LED_Dancer2 = LEDOff;
+			LED_Dancer3 = LEDOff;
+			LED_Dancer4 = LEDOff;
+			LED_Dancer5 = LEDOff;
+			break;
+
+		default:
+			break;
+	}
+} /* ledDancerOn */
+
 void ledDancerAllOff(void)
 {
 	LED_Dancer1 = LEDOff;
@@ -165,7 +234,7 @@ void sysDiagLedRolling(void)
 {
 	unsigned int t;
 
-	t=500;			// Delay 500ms
+	t=100;			// Delay 100ms
 	
 	LED_Dancer1 = LEDOn;
 	delayms(t);
@@ -190,7 +259,7 @@ void sysDiagLedFlashing(void)
 {
 	unsigned int t, n;
 
-	t=500;			// Delay 500ms
+	t=50;			// Delay 50ms
 	
 	for (n=0; n<2; n++)
 	{
@@ -221,12 +290,46 @@ void sysDiagLedFlashing(void)
 	}
 
 } /* sysDiagLedFlashing */
+
+void elwireDiag(void)
+{
+	unsigned char packet, dancer, elwire;
+	unsigned int  t;
+
+	t=100;												// Delay 50ms per El-Wire
+
+	// Turn off all wire
+	for (dancer=0; dancer<5; dancer++)
+	{
+		for (elwire=0; elwire<3; elwire++)
+		{
+			packet = (3-elwire)<<4 | (4-dancer) & 0xf7;		// Turn off the El-Wire in reversed order
+			
+			elwireTxPacket(packet, 1);
+			delayms(t);
+		}
+	}
+
+	for (dancer=0; dancer<5; dancer++)
+	{
+		for (elwire=0; elwire<3; elwire++)
+		{
+			packet = elwire<<4 | dancer | 0x08;				// Turn on the El-Wire
+		
+			elwireTxPacket(packet, 1);
+			delayms(t);
+		}
+	}
+
+} /* elwireDiag */
 		
 void sysDiagnostic(void)
 {
 	LED_Diagnostic = LEDOn;
 
-	sysDiagLedFlashing();
+//	sysDiagLedFlashing();
+
+	elwireDiag();
 
 	LED_Diagnostic = LEDOff;
 
@@ -235,9 +338,9 @@ void sysDiagnostic(void)
 void elwireDefaultSeq(void)
 {
 	LED_DefaultSeq = LEDOn;
-
+	
 	sysDiagLedRolling();
-
+	
 	LED_DefaultSeq = LEDOff;
 
 } /* elwireDefaultSeq */
@@ -246,23 +349,32 @@ unsigned char arduinoGetData(void)
 {
 	unsigned char arduinoData;
 
-	if (!DATA_Rdy)			// No data available
-	{
+	if (DATA_Rdy != 0)		// No data available
+	{					
 		return 0;
 	}
 
-	arduinoData = PORT_Arduino & 0x7f;	// Read Data from Arduino
+	arduinoData = PORT_Arduino & 0x3f | 0x80;	// Read Data from Arduino
 
 	DATA_Ack = 0; 			// Send Ack to Arduino
 	
-	while (DATA_Rdy); 		// Wait for Arduino ack my ACK
+	while (DATA_Rdy == 0); 	// Wait for Arduino ack my ACK and reset RDY
 	DATA_Ack = 1;		  	// Reset ACK to standby
 
 	return arduinoData;		// Keep bit-6 On to indicate data available from Arduino
 
-} /* arduinoDataReady */
+} /* arduinoGetData */
 
+void elwireTxPacket(unsigned char packet, unsigned char led)
+{
+	if (led) ledDancerOn(packet);
 
+	serialTxChar(packet); 			// Send data to dancers
+	serialTxChar(packet);			// Resend for insurance
+
+	if (led) ledDancerOff(packet);
+
+} /* elwireTxPacket */
 
 void main(void)
 {
@@ -280,23 +392,26 @@ void main(void)
 			continue;
 		}
 
-		arduinoMidi = arduinoGetData();
-
-		arduinoMidi = 'A';
+		arduinoMidi = arduinoGetData();			// b7 of data should be 1 (ignored by dancer receiver)
 
 		if (arduinoMidi)
 		{
-			ledDancerOn(arduinoMidi);
-
-			serialTxChar(arduinoMidi);
-
-			ledDancerAllOff();
+			elwireTxPacket(arduinoMidi, 1);		// Send Data with LED status on
 		}
 	}		
 } /* main */
 
-//void ISRsysDiagnostic() interrupt 0	using 2
-//{
-//	sysDiagnostic();
-//
-//} /* ISRsysDiagnostic */
+void ISRSerialPort() interrupt 4 using 1
+{
+    if (TI)					// Transmittion finished
+    {
+		TI = 0;			  	// Reset transmit flag for next transmittion
+	}
+
+} /* ISRSerialPort */
+
+void ISRsysDiagnostic() interrupt 0	using 2
+{
+	sysDiagnostic();
+} /* ISRsysDiagnostic */
+
