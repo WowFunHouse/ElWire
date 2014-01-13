@@ -1,7 +1,7 @@
 /**************************************************************
  Title:			Parallel to Wireless Transmitter		
  
- File:			tx0011.c
+ File:			tx0020.c
 
  Version:		0.50
  Description:	Receive parallel pkt from Arduino
@@ -70,10 +70,10 @@
 #define LED_Dancer4	  		P23
 #define LED_Dancer5			P24
 
-#define	LED_AutoSeq		P25
+#define	LED_AutoSeq			P25
 #define	LED_Diagnostic		P26
 
-#define	KEY_AutoSeq		P27
+#define	KEY_AutoSeq			P27
 
 #define	ELWIRE_ON			0x80
 #define	ELWIRE_OFF			0x00
