@@ -348,9 +348,9 @@
           <GroupName>Source Group 1</GroupName>
           <Files>
             <File>
-              <FileName>Tx0020.c</FileName>
+              <FileName>Tx0030.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Tx0020.c</FilePath>
+              <FilePath>.\Tx0030.c</FilePath>
             </File>
           </Files>
         </Group>
