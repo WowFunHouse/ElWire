@@ -1,5 +1,4 @@
 /**************************************************************
-
  Title:			El-Wire Dancer Wireless Receiver		
 
  
@@ -51,43 +50,42 @@
 #define	DEBUG_DELAYMS		10
 #define	DEBUG_PKT			0x48
 
-#define	LEDOn				0
-#define	LEDOff				1
+#define	LED_ON				0
+#define	LED_OFF				1
 
 #define	WSN_RST				P37
 
-#define ELWIRE_PORT			P1
+#define ELWIRE_PORT			P2
 
-#define	ELWIRE_BLU_SW		P10
-#define	ELWIRE_GRN_SW		P11
-#define	ELWIRE_AUX_SW		P12
-#define	ELWIRE_GLS_SW		P13
+#define	ELWIRE_BLU_SW		P20
+#define	ELWIRE_GRN_SW		P21
+#define	ELWIRE_AUX_SW		P22
+#define	ELWIRE_GLS_SW		P23
 
-#define	LED_AutoSeq			P25
-#define	LED_Diagnostic		P26
+#define	ELWIRE_BLU_LED		P24
+#define	ELWIRE_GRN_LED		P25
+#define	ELWIRE_AUX_LED		P26
+#define	ELWIRE_GLS_LED		P27
 
 #define	KEY_AutoSeq			P27
 
-#define	ELWIRE_ON			0x80
-#define	ELWIRE_OFF			0x00
+#define	ELWIRE_ON			1;				// Turn on  El-Wire
+#define	ELWIRE_OFF			0;				// Turn off El-Wire
 
-#define	ELWIRE_BLU			0x00			// El-Wire Blue
-#define	ELWIRE_GRN			0x01			// El-Wire Green
-#define	ELWIRE_AUX			0x02			// El-Wire Aux Color
-#define	ELWIRE_GLS			0x03			// El-Wire Eye-Glasses
+#define	ELWIRE_ALL_ON		0x0f;			// Turn on  all El-Wires and LEDs
+#define	ELWIRE_ALL_OFF		0xf0;			// Turn off all El-Wires and LEDs
 
-void delayms(unsigned int t);
-void uartInit38400(void);
-void initBoard(void);
-unsigned char keyAutoSeq(void);
-void sysDiagLedRolling(void);
-void sysDiagLedFlashing(void);
-void elwireDiag(void);
-void sysDiagnostic(void);
-void elwireAutoSeq(void);
-void elwireTxPacket(unsigned char pkt, unsigned char led);
+#define	ELWIRE_PKT_ON		0x80
+#define	ELWIRE_PKT_OFF		0x00
 
-int sysDiagReq=0;
+#define	ELWIRE_PKT_BLU		0x00			// El-Wire Blue
+#define	ELWIRE_PKT_GRN		0x01			// El-Wire Green
+#define	ELWIRE_PKT_AUX		0x02			// El-Wire Aux Color
+#define	ELWIRE_PKT_GLS		0x03			// El-Wire Eye-Glasses
+
+unsigned char sysDiagReq=0;
+unsigned char dancerSerialDataRdy;
+unsigned char dancerSerialDataRxd;
 
 void delayms(unsigned int t)   // 1ms delay: torrance -0.651041666667us
 {
@@ -121,118 +119,145 @@ void uartInit38400(void)
 
 } /* uartInit38400 */
 
-void initBoard(void)
+void dancerBoardInit(void)
 {
-	PORT_ELWIRES	 = 0;		// Turn off all EL-Wires
+	ELWIRE_PORT		 = 0;		// Turn off all EL-Wires
 
 	WSN_RST			 = 0;		// Reset WSN-02/03 Wireless module
-	delayms(10);				// Delay 50ms
+	delayms(10);				// Delay 10ms
 	WSN_RST			 = 1;		// Normal Operation
 	delayms(10);				// Wait for WSN-02/03 ready
 	
-} /* initBoard */
+} /* dancerBoardInit */
 
-unsigned char keyAutoSeq(void)
+void dancerElWirePattern(unsigned char pattern)
 {
-	return ((~KEY_AutoSeq) & 1);
+	unsigned char elwire, led;
 
-} /* keyAutoSeq */
+	pattern &= 0x0f;			// Lower 4 bits only for controlling El-Wires
+
+	led = pattern << 4;
+	elwire = led | pattern;
+
+#ifdef DEBUG
+	DEBUG_PORT	= elwire;
+#endif
+
+	ELWIRE_PORT = elwire;
+
+} /* dancerElWirePattern */
+
+void dancerElwireOn(unsigned char elwireIdx)
+{
+	switch (elwireIdx)
+	{
+		case ELWIRE_PKT_BLU:
+			ELWIRE_BLU_SW  = ELWIRE_ON;
+			ELWIRE_BLU_LED = LED_ON;
+			break;
+
+		case ELWIRE_PKT_GRN:
+			ELWIRE_GRN_SW  = ELWIRE_ON;
+			ELWIRE_GRN_LED = LED_ON;
+			break;
+
+		case ELWIRE_PKT_AUX:
+			ELWIRE_AUX_SW  = ELWIRE_ON;
+			ELWIRE_AUX_LED = LED_ON;
+			break;
+		
+		case ELWIRE_PKT_GLS:
+			ELWIRE_GLS_SW  = ELWIRE_ON;
+			ELWIRE_AUX_LED = LED_ON;
+			break;
+
+		default:
+			break;
+		}
+} /* dancerElwireOn */
 
 void dancerElWireDiag(void)
 {
-	unsigned char pkt, dancer, elwire;
+	unsigned char elwire;
+	unsigned char i, n;
 	unsigned int  t;
 
-	t=100;											// Delay 100ms per El-Wire
+	i=1;
+	t=100;									// Delay 100ms per El-Wire
 
-	// Turn off all wire
-	for (dancer=0; dancer<5; dancer++)
-	{
+	// Turn off all wires
+	ELWIRE_PORT = ELWIRE_ALL_OFF;			// Turn off the El-Wire in reversed order		
+
+	for (n=0; n<3; n++)
+	{	  
 		for (elwire=0; elwire<4; elwire++)
 		{
-			pkt = elwire<<4 | dancer & 0xf7;		// Turn off the El-Wire in reversed order
-			
-			elwireTxPacket(pkt, 1);
+			dancerElWirePattern(i << elwire);	// Turn on each El-Wire
 			delayms(t);
 		}
+	
+		for (i=0; i<3; i++)
+		{
+			ELWIRE_PORT = ELWIRE_ALL_OFF;
+			delayms(t);
+			ELWIRE_PORT = ELWIRE_ALL_ON;
+			delayms(t);
+		}
+		delayms(2*t);
 	}
 
-	for (dancer=0; dancer<5; dancer++)
-	{
-		for (elwire=0; elwire<4; elwire++)
-		{
-			pkt = elwire<<4 | dancer | 0x08;				// Turn on the El-Wire
-		
-			elwireTxPacket(pkt, 1);
-			delayms(t);
-		}
-	}
+	ELWIRE_PORT = ELWIRE_ALL_OFF;
 
-	// Turn off all wire backward
-	for (dancer=0; dancer<5; dancer++)
-	{
-		for (elwire=0; elwire<3; elwire++)
-		{
-			pkt = (3-elwire)<<4 | (4-dancer) & 0xf7;		// Turn off the El-Wire in reversed order
-			
-			elwireTxPacket(pkt, 1);
-			delayms(t);
-		}
-	}
 } /* elwireDiag */
 		
-void sysDiagnostic(void)
+void dancerSysDiag(void)
 {
-	LED_Diagnostic = LEDOn;
+	dancerElWireDiag();
 
-//	sysDiagLedFlashing();
+} /* dancerSysDiag */
 
-	elwireDiag();
-
-	LED_Diagnostic = LEDOff;
-
-} /* sysDiagnostic */
+unsigned char dancerSerialGetByte()
+{
+ 	return 0;
+} /* dancerSerialGetByte */
 
 void main(void)
 {
-	unsigned char arduinoMidi;
+	unsigned char dancerID;
 
 	sysDiagReq = 0;				// Reset Diagnostic Request	Flag
 
     uartInit38400();
 
-	initBoard();
+	dancerBoardInit();
+
+	dancerSysDiag();			// Perform initial diagnostic
 
 	for (;;)
 	{
-		if (sysDiagReq)
+		if (dancerSerialDataRdy)
 		{
-			sysDiagnostic();		// Execute Diagnostic
+			dancerID = dancerSerialDataRxd & 0x07;
 
-			sysDiagReq = 0;			// Reset Diagnostic Request Flag			
-			continue;
-		}
-
-		if (keyAutoSeq())
-		{
-			elwireAutoSeq();
-			continue;
-		}
-
-		arduinoMidi = arduinoGetData();			// b7 of data should be 1 (ignored by dancer receiver)
-			
-		if (arduinoMidi)
-		{
-			elwireTxPacket(arduinoMidi, 1);		// Send Data with LED status on
+			if (dancerID == DANCER_ID)
+			{
+			}		
 		}
 	}		
 } /* main */
 
 void ISRSerialPort() interrupt 4 using 1
 {
-    if (TI)					// Transmittion finished
+    if (TI)							// Transmittion finished
     {
-		TI = 0;			  	// Reset transmit flag for next transmittion
+		TI = 0;			  			// Reset transmit flag for next transmittion
+	}
+	else
+	{
+		RI = 0;						// Clear Serial Interrupt Flag
+
+		dancerSerialDataRxd = SBUF;	// Read data from serial port
+	   	dancerSerialDataRdy = 1;
 	}
 
 } /* ISRSerialPort */

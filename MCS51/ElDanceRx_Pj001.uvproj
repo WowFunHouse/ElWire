@@ -47,7 +47,7 @@
           <OutputName>ElDanceRx_Pj001</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
-          <CreateHexFile>0</CreateHexFile>
+          <CreateHexFile>1</CreateHexFile>
           <DebugInformation>1</DebugInformation>
           <BrowseInformation>1</BrowseInformation>
           <ListingPath>.\</ListingPath>
@@ -348,9 +348,9 @@
           <GroupName>Source Group 1</GroupName>
           <Files>
             <File>
-              <FileName>Rx0001.c</FileName>
+              <FileName>Rx0010.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Rx0001.c</FilePath>
+              <FilePath>.\Rx0010.c</FilePath>
             </File>
           </Files>
         </Group>
