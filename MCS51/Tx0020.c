@@ -3,7 +3,7 @@
  
  File:			tx0020.c
 
- Version:		0.50
+ Version:		0.78
  Description:	Receive parallel pkt from Arduino
  				and transmit through WSN-02/03 433MHz transmitter
 
@@ -44,13 +44,13 @@
  **************************************************************/
 #include <STC89.H>
 
-#undef	DEBUG
-#define	DEBUG_ARDUINO_OFF
-#undef	DEBUG_LED_PTN
-#define	DEBUG_SLOW
-
-#define	DEBUG_DELAYMS		10
+#undef	DEBUG_ARDUINO_OFF
+#undef	DEBUG_SLOW_LED
 #define	DEBUG_PKT			0x48
+
+#define	TX_SLOW
+#define	TX_SLOW_DELAYMS		5
+#define	TX_SAFE_REPEAT		3
 
 #define	LEDOn				0
 #define	LEDOff				1
@@ -70,13 +70,12 @@
 #define LED_Dancer4	  		P23
 #define LED_Dancer5			P24
 
-#define	LED_AutoSeq			P25
+#define	LED_PresetAct		P25
 #define	LED_Diagnostic		P26
 
-#define	KEY_AutoSeq			P27
+#define	KEY_PresetAct		P27
 
-#define	ELWIRE_ON			0x80
-#define	ELWIRE_OFF			0x00
+#define	ELWIRE_ON			0x08			
 
 #define	ELWIRE_BLU			0x00			// El-Wire Blue
 #define	ELWIRE_GRN			0x01			// El-Wire Green
@@ -87,17 +86,14 @@ void delayms(unsigned int t);
 void uartInit38400(void);
 void stnSerialTxByte(unsigned char c);
 void stnBoardInit(void);
-unsigned char stnKeyAutoSeq(void);
+unsigned char stnKeyPresetAct(void);
 void stnLEDDancerOn(unsigned arduinoData);
 void stnLEDDancerOff(unsigned arduinoData);
-void stnLEDDancerAllOff(void);
-void stnSysDiagLedRolling(void);
-void stnSysDiagLedFlashing(void);
-void stnElWireDiag(void);
+void stnSysDiagElwire(void);
 void stnSysDiag(void);
-void stnElwireAutoSeq(void);
+void stnElwirePresetAct(void);
 unsigned char stnArduinoGetData(void);
-void stnElWireTxPacket(unsigned char pkt, unsigned char led);
+void stnElWireTxPacket(unsigned char pkt);
 
 int sysDiagReq=0;
 
@@ -154,11 +150,11 @@ void stnBoardInit(void)
 	
 } /* stnBoardInit */
 
-unsigned char stnKeyAutoSeq(void)
+unsigned char stnKeyPresetAct(void)
 {
-	return ((~KEY_AutoSeq) & 1);
+	return ((~KEY_PresetAct) & 1);
 
-} /* stnKeyAutoSeq */
+} /* stnKeyPresetAct */
 
 void stnLEDDancerOn(unsigned arduinoData)
 {
@@ -238,94 +234,23 @@ void stnLEDDancerOff(unsigned arduinoData)
 	}
 } /* stnLEDDancerOn */
 
-#ifdef DEBUG_LED_PTN
-void stnLEDDancerAllOff(void)
-{
-	LED_Dancer1 = LEDOff;
-	LED_Dancer2 = LEDOff;
-	LED_Dancer3 = LEDOff;
-	LED_Dancer4 = LEDOff;
-	LED_Dancer5 = LEDOff;
-
-} /* stnLEDDancerAllOff */
-
-void stnSysDiagLedRolling(void)
-{
-	unsigned int t;
-
-	t=100;			// Delay 100ms
-	
-	LED_Dancer1 = LEDOn;
-	delayms(t);
-	
-	LED_Dancer2 = LEDOn;
-	delayms(t);
-	
-	LED_Dancer3 = LEDOn;
-	delayms(t);
-	
-	LED_Dancer4 = LEDOn;
-	delayms(t);
-	
-	LED_Dancer5 = LEDOn;
-	delayms(t);
-	
-	stnLEDDancerAllOff();
-
-} /* stnSysDiagLedRolling */
-
-void stnSysDiagLedFlashing(void)
-{
-	unsigned int t, n;
-
-	t=50;			// Delay 50ms
-	
-	for (n=0; n<2; n++)
-	{
-		LED_Dancer1 = LEDOn;
-		delayms(t);
-		LED_Dancer1 = LEDOff;
-		delayms(t);
-		
-		LED_Dancer2 = LEDOn;
-		delayms(t);
-		LED_Dancer2 = LEDOff;
-		delayms(t);
-		
-		LED_Dancer3 = LEDOn;
-		delayms(t);
-		LED_Dancer3 = LEDOff;
-		delayms(t);
-		
-		LED_Dancer4 = LEDOn;
-		delayms(t);
-		LED_Dancer4 = LEDOff;
-		delayms(t);
-		
-		LED_Dancer5 = LEDOn;
-		delayms(t);
-		LED_Dancer5 = LEDOff;
-		delayms(t);
-	}
-
-} /* stnSysDiagLedFlashing */
-#endif /* DEBUG_LED_PTN */
-
-void stnElWireDiag(void)
+void stnSysDiagElwire(void)
 {
 	unsigned char pkt, dancer, elwire;
 	unsigned int  t;
 
-	t=100;											// Delay 100ms per El-Wire
+	t=100;								// Delay 100ms per El-Wire
 
 	// Turn off all wire
 	for (dancer=0; dancer<5; dancer++)
 	{
 		for (elwire=0; elwire<4; elwire++)
 		{
-			pkt = elwire<<4 | dancer & 0xf7;		// Turn off the El-Wire in reversed order
+			pkt  = elwire << 4;
+			pkt |= dancer;
+			pkt &= 0xf7;				// Turn off the El-Wires
 			
-			stnElWireTxPacket(pkt, 1);
+			stnElWireTxPacket(pkt);
 			delayms(t);
 		}
 	}
@@ -334,9 +259,11 @@ void stnElWireDiag(void)
 	{
 		for (elwire=0; elwire<4; elwire++)
 		{
-			pkt = elwire<<4 | dancer | 0x08;		// Turn on the El-Wire
+			pkt  = elwire << 4;
+			pkt |= dancer;
+			pkt |= ELWIRE_ON;				// Turn on the El-Wire
 		
-			stnElWireTxPacket(pkt, 1);
+			stnElWireTxPacket(pkt);
 			delayms(t);
 		}
 	}
@@ -346,13 +273,15 @@ void stnElWireDiag(void)
 	{
 		for (elwire=0; elwire<4; elwire++)
 		{
-			pkt = (3-elwire)<<4 | (4-dancer) & 0xf7;		// Turn off the El-Wire in reversed order
+			pkt  = (3-elwire) << 4;
+			pkt |= (4-dancer);
+			pkt &= 0xf7;		// Turn off the El-Wire in reversed order
 			
-			stnElWireTxPacket(pkt, 1);
+			stnElWireTxPacket(pkt);
 			delayms(t);
 		}
 	}
-} /* stnElWireDiag */
+} /* stnSysDiagElwire */
 		
 void stnSysDiag(void)
 {
@@ -360,32 +289,32 @@ void stnSysDiag(void)
 
 //	stnSysDiagLedFlashing();
 
-	stnElWireDiag();
+	stnSysDiagElwire();
 
 	LED_Diagnostic = LEDOff;
 
 } /* stnSysDiag */
 
-void stnElwireAutoSeq(void)
+void stnElwirePresetAct(void)
 {
 	unsigned char pkt, dancer, elwire;
 	unsigned char n;
 	unsigned int  t;
 
-	t=50;												// Delay 50ms per El-Wire
+	t=50;								// Delay 50ms per El-Wire
 
-	LED_AutoSeq = LEDOn;
-	
-//	stnSysDiagLedRolling();
+	LED_PresetAct = LEDOn;
 
 	// Turn off all wire
 	for (dancer=0; dancer<5; dancer++)
 	{
 		for (elwire=0; elwire<4; elwire++)
 		{
-			pkt = (3-elwire)<<4 | (4-dancer) & 0xf7;		// Turn off the El-Wire in reversed order
+			pkt  = (3-elwire) << 4;			// El-Wires in reversed order
+			pkt |= (4-dancer);
+			pkt &= ~ELWIRE_ON;				// Turn off the El-Wires
 			
-			stnElWireTxPacket(pkt, 1);
+			stnElWireTxPacket(pkt);
 		}
 		delayms(t);
 	}
@@ -395,9 +324,11 @@ void stnElwireAutoSeq(void)
 	{
 		for (dancer=0; dancer<5; dancer++)
 		{
-			pkt = elwire<<4 | dancer | ELWIRE_ON;				// Turn on the El-Wire
+			pkt  = elwire << 4;
+			pkt |= dancer;
+			pkt |= ELWIRE_ON;				// Turn on the El-Wire
 		
-			stnElWireTxPacket(pkt, 1);
+			stnElWireTxPacket(pkt);
 		}
 		delayms(2*t);
 	}
@@ -408,25 +339,31 @@ void stnElwireAutoSeq(void)
 	{
 		for (dancer=0; dancer<5; dancer++)
 		{
-			pkt = elwire<<4 | dancer | ELWIRE_ON;  				// Turn on the El-Wire
+			pkt  = elwire <<4;
+			pkt |= dancer;
+			pkt |= ELWIRE_ON;  					// Turn on the El-Wire
 		}
 		delayms(t);
 
 		for (dancer=0; dancer<5; dancer++)
 		{
-			pkt = elwire<<4 | dancer | ELWIRE_OFF;  			// Turn off the El-Wire
+			pkt  = elwire << 4;
+			pkt |= dancer;
+			pkt &= ~ELWIRE_ON;  				// Turn off the El-Wire
 		}
 		delayms(t);
 	}
 
 	for (dancer=0; dancer<5; dancer++)
 	{
-		pkt = elwire<<4 | dancer | ELWIRE_ON;  					// Turn on the El-Wire
+		pkt  = elwire << 4;
+		pkt |= dancer;
+		pkt |= ELWIRE_ON;  						// Turn on the El-Wire
 	}
 		
-	LED_AutoSeq = LEDOff;
+	LED_PresetAct = LEDOff;
 
-} /* stnElwireAutoSeq */
+} /* stnElwirePresetAct */
 
 unsigned char stnArduinoGetData(void)
 {
@@ -435,16 +372,17 @@ unsigned char stnArduinoGetData(void)
 #ifdef DEBUG_ARDUINO_OFF
 	arduinoData = DEBUG_PKT;
 #else
-	if (DATA_Rdy != 0)		// No data available
+	if (DATA_Rdy == 0)		// No data available
 	{					
 		return 0;
 	}
 
-	arduinoData = PORT_Arduino & 0x3f | 0x80;	// Read Data from Arduino
+	arduinoData = PORT_Arduino & 0x3f; 	// Read Data from Arduino
+	arduinoData |= 0x80;	// Reformat input packet as valid data
 
 	DATA_Ack = 0; 			// Send Ack to Arduino
 	
-	while (DATA_Rdy == 0); 	// Wait for Arduino ack my ACK and reset RDY
+	while (DATA_Rdy != 0); 	// Wait for Arduino ack my ACK and reset RDY
 	DATA_Ack = 1;		  	// Reset ACK to standby
 #endif
 
@@ -452,22 +390,23 @@ unsigned char stnArduinoGetData(void)
 
 } /* stnArduinoGetData */
 
-void stnElWireTxPacket(unsigned char pkt, unsigned char led)
+void stnElWireTxPacket(unsigned char pkt)
 {
-	if (led) stnLEDDancerOn(pkt);
+	unsigned char n;
 
-#ifdef	DEBUG_SLOW
-	delayms(DEBUG_DELAYMS);
+	stnLEDDancerOn(pkt);
+
+	for (n=0; n<TX_SAFE_REPEAT; n++)
+	{
+		stnSerialTxByte(pkt); 			// Send data to dancers
+
+#ifdef TX_SLOW
+		delayms(TX_SLOW_DELAYMS);
 #endif
+	}
 
-	stnSerialTxByte(pkt); 			// Send data to dancers
-	stnSerialTxByte(pkt);			// Resend for insurance
+	stnLEDDancerOff(pkt);
 
-	if (led) stnLEDDancerOff(pkt);
-
-#ifdef	DEBUG_SLOW
-	delayms(DEBUG_DELAYMS);
-#endif
 } /* stnElWireTxPacket */
 
 void main(void)
@@ -490,17 +429,17 @@ void main(void)
 			continue;
 		}
 
-		if (stnKeyAutoSeq())
+		if (stnKeyPresetAct())
 		{
-			stnElwireAutoSeq();
+			stnElwirePresetAct();
 			continue;
 		}
 
-		arduinoMidi = stnArduinoGetData();			// b7 of data should be 1 (ignored by dancer receiver)
+		arduinoMidi = stnArduinoGetData();		// b7 of data should be 1 (ignored by dancer receiver)
 			
 		if (arduinoMidi)
 		{
-			stnElWireTxPacket(arduinoMidi, 1);		// Send Data with LED status on
+			stnElWireTxPacket(arduinoMidi);		// Send Data wirelessly
 		}
 	}		
 } /* main */
