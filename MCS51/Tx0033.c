@@ -4,10 +4,12 @@
  File:			tx0033.c
 
  Version:		1.00
+
  Description:	Receive parallel pkt from Arduino
  				and transmit through WSN-02/03 433MHz transmitter
 
  Created on:	2014-01-11
+
  Created by:	Michael
   
  Board:			Custom made MCS51 WSN-02/03 control system
