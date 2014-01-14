@@ -3,10 +3,10 @@
  
  File:			rx0015.c
 
- Version:		0.9 Beta
-	Receive packet wireless from transmitter
+ Version:		0.92 Beta
  			
- Description:	through WSN-02/03 433MHz wireless module
+ Description:	Receive packet wireless from transmitter
+				through WSN-02/03 433MHz wireless module
 
  Created on:	2014-01-12
  Created by:	Michael 
@@ -86,6 +86,8 @@
 #define	ELWIRE_PKT_GRN		0x01			// El-Wire Green
 #define	ELWIRE_PKT_AUX		0x02			// El-Wire Aux Color
 #define	ELWIRE_PKT_GLS		0x03			// El-Wire Eye-Glasses
+
+#define	ELWIRE_MULTIPKT_CNT	3				// Will receive 3 repeated packets
 
 unsigned char sysDiagReq;					// INT0 (Not in used)
 unsigned char dancerSerialDataRdy;
@@ -249,27 +251,102 @@ void dancerSysDiag(void)
 
 } /* dancerSysDiag */
 
-unsigned char dancerSerialGetByte(void)
+unsigned char dancerSerialGetData(void)
 {
-	unsigned char packet;
+	unsigned char packet[ELWIRE_MULTIPKT_CNT][2];
+	unsigned char pool[ELWIRE_MULTIPKT_CNT][2];
+	unsigned char i, j, k, datavalid, newdata, maxcnt; 
+	unsigned int  t;
 
-	packet = 0;
+	t=5;										// Delay between repeated packets: 5ms
 
-	if (RI != 0)
+	datavalid = 0;
+
+   	i=0;
+	if (RI != 0) 								// Data available
 	{
-		packet = SBUF;
-		packet |= 0x80;
-		RI = 0;
-		P2=~P2;
-		delayms(10);
-		P2=~P2;
+		packet[i][0]   = SBUF;					// Read Serial Port data
+		packet[i][0]  |= 0x80;					// Format it
+		packet[i++][1] = 1;						// Data valid
+		datavalid = 1;
+		RI = 0;									// Reset Serial Port Receive Flag
+		
+		delayms(t);								// Wait for a while
+			
+		for (i=1; i<ELWIRE_MULTIPKT_CNT; i++)
+		{
+			if (datavalid)
+			{
+				if (RI != 0)					// Data available 
+				{
+					packet[i][0]   = SBUF;		// Read Serail Port data
+					packet[i][0]  |= 0x80;		// Format it
+					packet[i++][1] = 1;			// Data valid
+					datavalid = 1;
+					RI = 0;						// Reset Serial Port Receive Flag
+					
+					delayms(t);					// Wait for a while
+				}
+				else
+				{
+					packet[i][0]   = 0;		
+					packet[i++][1] = 0;			// No repeated packet within valid period
+					datavalid = 0;				// Timout - no repeated packet
+				}
+			}
+			else
+			{
+				packet[i][0]   = 0;		
+				packet[i++][1] = 0;				// No repeated packet within valid period
+				datavalid = 0;					// Timout - no repeated packet
+			}
+		}
+
+		for (i=0; i < ELWIRE_MULTIPKT_CNT; i++)	// Clear the data pool
+		{	
+			pool[i][0]=0;
+			pool[i][1]=0;
+		}
+
+		for (i=0; i < ELWIRE_MULTIPKT_CNT; i++)
+		{
+			for (j=0; j < ELWIRE_MULTIPKT_CNT; j++)
+			{
+				if (packet[i][0] == pool[j][0])
+				{
+					newdata = 0;
+					pool[j][1]++;
+				}
+				else
+				{
+					newdata = 1;
+				}
+				
+				if (newdata)
+				{
+					for (k=0; k < ELWIRE_MULTIPKT_CNT; k++)		// Add new data to pool
+					{
+						while (pool[k][1] != 0);
+						
+						pool[k][0] = packet[i][0];
+						pool[k][1] = 1;
+						break;
+					}
+				}
+			}
+
+		}
 	}
 
-	return packet;
+	for (i=0; i < ELWIRE_MULTIPKT_CNT; i++)
+	{
+		if (pool[i][1] > maxcnt) maxcnt = pool[i][1];
+	}
+			
+	return pool[i][maxcnt];
 
-} /* dancerSerialGetByte */
+} /* dancerSerialGetData */
 
-			 	
 void main(void)
 {
 	unsigned char dancerID, dancerPacket;
@@ -283,7 +360,7 @@ void main(void)
 
 	for (;;)
 	{
-		dancerPacket = dancerSerialGetByte();		// Check if data avilable?
+		dancerPacket = dancerSerialGetData();		// Check if data avilable?
 		if (dancerPacket != 0)
 		{
 			dancerPacket &= 0x7f;					// Filter out the formating from Rx
