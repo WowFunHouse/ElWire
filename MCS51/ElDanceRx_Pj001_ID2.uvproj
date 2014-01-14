@@ -44,7 +44,7 @@
             <InvalidFlash>1</InvalidFlash>
           </TargetStatus>
           <OutputDirectory>.\</OutputDirectory>
-          <OutputName>ElDanceTx_Pj001</OutputName>
+          <OutputName>ElDanceRx_Pj001_ID2</OutputName>
           <CreateExecutable>1</CreateExecutable>
           <CreateLib>0</CreateLib>
           <CreateHexFile>1</CreateHexFile>
@@ -348,9 +348,9 @@
           <GroupName>Source Group 1</GroupName>
           <Files>
             <File>
-              <FileName>Tx0040.c</FileName>
+              <FileName>Rx0050_dancer2.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\Tx0040.c</FilePath>
+              <FilePath>.\Rx0050_dancer2.c</FilePath>
             </File>
           </Files>
         </Group>
