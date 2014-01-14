@@ -69,7 +69,7 @@
 
 unsigned char led=13;
 
-void ardSetDancer(byte elDancer)
+void ardDancerSelect(unsigned char elDancer)
 {
   int i=1;
   
@@ -77,20 +77,20 @@ void ardSetDancer(byte elDancer)
   digitalWrite(PIN_DANCER_B1, ((elDancer >> i++) & 1));
   digitalWrite(PIN_DANCER_B2, ((elDancer >> i++) & 1));
   
-} /* ardSetDancer */
+} /* ardDancerSelect */
 
-void ardSetColor(byte elIndex, byte elMode)
+void ardElWireSelect(unsigned char elIndex, unsigned char elMode)
 {
   digitalWrite(PIN_COLOR_B0,  (elIndex & 1));
   digitalWrite(PIN_COLOR_B1, ((elIndex >> 1) & 1));  
   digitalWrite(PIN_WIRE_MODE, elMode);
 
-} /* ardSetColor */
+} /* ardElWireSelect */
 
-void ardSetColorDefault()
+void ardElWireSelectDefault()
 {
-  ardSetColor(ELWIRE_BLU, ELWIRE_ON);
-} /* ardSetColorDefault */
+  ardElWireSelect(ELWIRE_BLU, ELWIRE_ON);
+} /* ardElWireSelectDefault */
 
 void ardDataReady()
 {
@@ -104,16 +104,20 @@ void ardDataNotReady()
   
 } /* ardDataNotReady */
 
-void ardDataSend()
+void ardDataSend(unsigned char dancer, unsigned char elwire, unsigned char mode)
 {
+  
+  ardDancerSelect(dancer);
+  ardElWireSelect(elwire, mode);
+  
   ardDataReady();                      // Data Ready for peer wireless transmittion
   while (digitalRead(PIN_DATA_ACK));   // Wait for -ACK from peer
   ardDataNotReady();                   // Reset Data Ready flag
   
 } /* ardDataSend */
 
-void HandleNoteOn(byte channel, byte pitch, byte velocity) {
-  byte elDancer, elIndex, elMode;
+void HandleNoteOn(unsigned char channel, unsigned char pitch, unsigned char velocity) {
+  unsigned char elDancer, elIndex, elMode;
   
   // Do whatever you want when you receive a Note On
   if ((pitch >= STMAN01_NOTE) && (pitch <= STMAN_LASTNOTE))
@@ -133,15 +137,15 @@ void HandleNoteOn(byte channel, byte pitch, byte velocity) {
         elDancer = 0;
         elIndex  = pitch - STMAN01_NOTE;   
       }
-      else if (pitch <= STMAN03_NOTE) {    // Dancer 2
+      else if (pitch < STMAN03_NOTE) {    // Dancer 2
         elDancer = 1;
         elIndex  = pitch - STMAN02_NOTE;    
       } 
-      else if (pitch <= STMAN04_NOTE) {    // Dancer 3
+      else if (pitch < STMAN04_NOTE) {    // Dancer 3
         elDancer = 2;
         elIndex  = pitch - STMAN03_NOTE;
       }
-      else if (pitch <= STMAN05_NOTE) {    // Dancer 4
+      else if (pitch < STMAN05_NOTE) {    // Dancer 4
         elDancer = 3;
         elIndex  = pitch - STMAN04_NOTE;
       }
@@ -149,19 +153,35 @@ void HandleNoteOn(byte channel, byte pitch, byte velocity) {
         elDancer = 4;
         elIndex  = pitch - STMAN05_NOTE;
       }
-      
-      ardSetDancer(elDancer);
-      
+       
       if (elIndex < 4) {
-          ardSetColor(elIndex, elMode);
+          ardDataSend(elDancer, elIndex, elMode);  // Send to Peer
       }
-      
-      ardDataSend();                    // Send to peer
     }
   
   // Try to keep your callbACKs short (no delays ect) as the contrary would slow down the loop()
   // and have a bad impact on real-time performance.
 } /* HandleNoteOn */
+
+void ardElWireDiag(void) {
+  unsigned char dancer, elwire;
+  unsigned char n;
+  
+  for (n=0; n<2; n++) {
+    for (dancer=0; dancer<5; dancer++) {
+      for (elwire=0; elwire<4; elwire++) {
+        ardDataSend(dancer, elwire, ELWIRE_OFF);
+      }
+    }
+    
+    for (dancer=0; dancer<5; dancer++) {
+      for(elwire=0; elwire<4; elwire++) {
+        ardDataSend(dancer, elwire, ELWIRE_ON);        
+        delay(100);
+      }
+    }
+  }        
+} /* ardElWireDiag */
 
 void setup() {
   // Initiate MIDI communications, listen to all channels
@@ -184,6 +204,10 @@ void setup() {
   pinMode(PIN_DATA_RDY, OUTPUT);
   pinMode(PIN_DATA_ACK, INPUT);
 
+  ardDataNotReady();            // No data for output
+  
+  ardElWireDiag();              // Execute system diagnostic
+  
 } /* setup */
 
 
