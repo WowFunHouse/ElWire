@@ -1,7 +1,7 @@
 /**************************************************************
  Title:			El-Wire Dancer Wireless Receiver		
  
- File:			rx0010.c
+ File:			rx0015.c
 
  Version:		0.9 Beta
 	Receive packet wireless from transmitter
