@@ -3,7 +3,7 @@
  
  File:			rx0010.c
 
- Version:		0.20
+ Version:		0.9 Beta
 	Receive packet wireless from transmitter
  			
  Description:	through WSN-02/03 433MHz wireless module
@@ -36,11 +36,7 @@
 #define	DANCER_ID			0
 
 #undef	DEBUG
-#define	DEBUG_ARDUINO_OFF
-#undef	DEBUG_LED_PTN
-#define	DEBUG_SLOW
 
-#define	DEBUG_PORT			P1
 #define	DEBUG_DELAYMS		10
 #define	DEBUG_PKT			0x48
 
@@ -48,8 +44,21 @@
 #define	LED_OFF				1
 
 #define	WSN_RST				P37
-										
+
+#ifdef	DEBUG										
 #define ELWIRE_PORT			P1
+
+#define	ELWIRE_BLU_SW		P10
+#define	ELWIRE_GRN_SW		P11
+#define	ELWIRE_AUX_SW		P12
+#define	ELWIRE_GLS_SW		P13
+
+#define	ELWIRE_BLU_LED		P14
+#define	ELWIRE_GRN_LED		P15
+#define	ELWIRE_AUX_LED		P16
+#define	ELWIRE_GLS_LED		P17
+#else
+#define ELWIRE_PORT			P2
 
 #define	ELWIRE_BLU_SW		P20
 #define	ELWIRE_GRN_SW		P21
@@ -60,17 +69,18 @@
 #define	ELWIRE_GRN_LED		P25
 #define	ELWIRE_AUX_LED		P26
 #define	ELWIRE_GLS_LED		P27
+#endif
 
 #define	ELWIRE_BLU			01				// P24
 #define	ELWIRE_GRN			02			    // P25
 #define	ELWIRE_AUX			04			    // P26
 #define	ELWIRE_GLS			08			    // P27
 
-#define	ELWIRE_ON			1;				// Turn on  El-Wire
-#define	ELWIRE_OFF			0;				// Turn off El-Wire
+#define	ELWIRE_ON			0;				// Turn on  El-Wire
+#define	ELWIRE_OFF			1;				// Turn off El-Wire
 
-#define	ELWIRE_ALL_ON		0x0f;			// Turn on  all El-Wires and LEDs
-#define	ELWIRE_ALL_OFF		0xf0;			// Turn off all El-Wires and LEDs
+#define	ELWIRE_ALL_ON		0x00;			// Turn on  all El-Wires and LEDs
+#define	ELWIRE_ALL_OFF		0xff;			// Turn off all El-Wires and LEDs
 
 #define	ELWIRE_PKT_BLU		0x00			// El-Wire Blue
 #define	ELWIRE_PKT_GRN		0x01			// El-Wire Green
@@ -115,32 +125,14 @@ void uartInit38400(void)
 
 void dancerBoardInit(void)
 {
-	ELWIRE_PORT		 = 0;		// Turn off all EL-Wires
+	ELWIRE_PORT		 = ELWIRE_ALL_OFF;		// Turn off all EL-Wires
 
-	WSN_RST			 = 0;		// Reset WSN-02/03 Wireless module
-	delayms(10);				// Delay 10ms
-	WSN_RST			 = 1;		// Normal Operation
-	delayms(10);				// Wait for WSN-02/03 ready
+	WSN_RST			 = 0;					// Reset WSN-02/03 Wireless module
+	delayms(10);							// Delay 10ms
+	WSN_RST			 = 1;					// Normal Operation
+	delayms(10);							// Wait for WSN-02/03 ready
 	
 } /* dancerBoardInit */
-
-void danceElWireControl(unsigned char pattern)
-{
-	unsigned char elwire, led;
-
-	pattern &= 0x0f;				// Lower 4 bits only for controlling El-Wires
-
-	led = ~(pattern << 4);			// On-board status LEDs
-
-	elwire = led | pattern;
-
-#ifdef DEBUG
-	DEBUG_PORT	= elwire;
-#endif
-
-	ELWIRE_PORT = elwire;				// Turn On/Off the El-Wire and Status LEDs
-
-} /* danceElWireControl */
 
 void dancerElWireOn(unsigned char elwireIdx)
 {
@@ -200,6 +192,23 @@ void dancerElWireOff(unsigned char elwireIdx)
 		}
 } /* dancerElwireOff */
 
+void danceElWireControl(unsigned char pattern)
+{
+	unsigned char elwire, led;
+
+	elwire  = ~(pattern & 0x0f);		// Lower 4 bits only for controlling El-Wires
+
+	led 	= elwire << 4;				// On-board status LEDs
+
+/*
+	elwire |= led;						// BUG: Not working - may be compiler bug
+*/
+	elwire  = led | (led >> 4);
+
+	ELWIRE_PORT = elwire;				// Turn On/Off the El-Wire and Status LEDs
+
+} /* danceElWireControl */
+
 void dancerElWireDiag(void)
 {
 	unsigned char elwire;
@@ -210,9 +219,9 @@ void dancerElWireDiag(void)
 	t=100;									// Delay 100ms per El-Wire
 
 	// Turn off all wires
-	ELWIRE_PORT = ELWIRE_ALL_OFF;			// Turn off the El-Wire in reversed order		
+	ELWIRE_PORT = ELWIRE_ALL_OFF;			// Turn off the El-Wires
 
-	for (n=0; n<3; n++)
+	for (n=0; n<2; n++)
 	{	  
 		for (elwire=0; elwire<4; elwire++)
 		{
@@ -224,12 +233,12 @@ void dancerElWireDiag(void)
 		{
 			ELWIRE_PORT = ELWIRE_ALL_OFF;
 			delayms(t);
+
 			ELWIRE_PORT = ELWIRE_ALL_ON;
 			delayms(t);
 		}
-		delayms(2*t);
+		delayms(3*t);
 	}
-
 	ELWIRE_PORT = ELWIRE_ALL_OFF;
 
 } /* elwireDiag */
@@ -247,13 +256,13 @@ unsigned char dancerSerialGetByte(void)
 	packet = 0;
 
 	if (RI != 0)
-	{	
-
+	{
 		packet = SBUF;
-
 		packet |= 0x80;
-
 		RI = 0;
+		P2=~P2;
+		delayms(10);
+		P2=~P2;
 	}
 
 	return packet;
@@ -266,9 +275,9 @@ void main(void)
 	unsigned char dancerID, dancerPacket;
 	unsigned char elwire, mode;
 
-    uartInit38400();
-
 	dancerBoardInit();
+
+    uartInit38400();
 
 	dancerSysDiag();								// Perform initial diagnostic
 
@@ -277,11 +286,13 @@ void main(void)
 		dancerPacket = dancerSerialGetByte();		// Check if data avilable?
 		if (dancerPacket != 0)
 		{
+			dancerPacket &= 0x7f;					// Filter out the formating from Rx
+
 			dancerID = dancerPacket & 0x07;	 		// Get the dancer ID
 
 			if (dancerID == DANCER_ID)				// Is it a packet belong to me?
 			{
-				elwire = dancerPacket >> 4;			// Which El-Wire
+				elwire =  dancerPacket >> 4;		// Which El-Wire
 				mode   = (dancerPacket >> 3) & 1;	// El-Wire On/Off
 
 				if (mode != 0)
@@ -302,13 +313,6 @@ void ISRSerialPort() interrupt 4 using 1
     if (TI)							// Transmittion finished
     {
 		TI = 0;			  			// Reset transmit flag for next transmittion
-	}
-	else
-	{
-		RI = 0;						// Clear Serial Interrupt Flag
-
-		dancerSerialDataRxd = SBUF;	// Read data from serial port
-	   	dancerSerialDataRdy = 1;
 	}
 
 } /* ISRSerialPort */
